@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Affine Transform Visualizer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 20px;
+            margin: 0;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            max-width: 800px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="number"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            width: 140px;
+            transition: border-color 0.2s;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #3182ce;
+        }
+
+        .grid-wrapper {
+            position: relative;
+            margin: 20px 0 40px 0;
+            padding: 40px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 450px;
+            height: 450px;
+            background-color: #ebf8ff;
+            border: 3px solid #2b6cb0;
+        }
+
+        .cell {
+            border: 1px dashed #90cdf4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .cell:hover {
+            background-color: #bee3f8;
+            cursor: crosshair;
+        }
+
+        .rc-label {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            font-size: 12px;
+            color: #2b6cb0;
+            font-weight: bold;
+        }
+
+        .coord-val {
+            font-family: "Courier New", Courier, monospace;
+            font-weight: bold;
+            color: #2d3748;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        /* Corner Labels */
+        .corner {
+            position: absolute;
+            font-size: 13px;
+            font-weight: bold;
+            color: #c53030;
+            font-family: "Courier New", Courier, monospace;
+            background: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #feb2b2;
+        }
+
+        .top-left { top: 15px; left: 10px; }
+        .top-right { top: 15px; right: 10px; }
+        .bottom-left { bottom: 15px; left: 10px; }
+        .bottom-right { bottom: 15px; right: 10px; }
+
+        .formula-box {
+            background: #f7fafc;
+            border-left: 4px solid #4299e1;
+            padding: 15px 20px;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 15px;
+            color: #2d3748;
+        }
+
+        .formula-box code {
+            font-size: 16px;
+            color: #c53030;
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .note {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 10px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Affine Transform Visualizer</h2>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>Origin X (Easting)</label>
+                <input id="originX" type="number" value="100000" step="1000">
+            </div>
+            <div class="control-group">
+                <label>Origin Y (Northing)</label>
+                <input id="originY" type="number" value="500000" step="1000">
+            </div>
+            <div class="control-group">
+                <label>Pixel Resolution (m)</label>
+                <input id="res" type="number" value="30" step="10">
+            </div>
+        </div>
+
+        <div class="grid-wrapper">
+            <div id="tl" class="corner top-left"></div>
+            <div id="tr" class="corner top-right"></div>
+            <div id="bl" class="corner bottom-left"></div>
+            <div id="br" class="corner bottom-right"></div>
+
+            <div class="grid" id="raster-grid">
+                </div>
+        </div>
+
+        <div class="formula-box">
+            <strong>Active Transform Logic:</strong><br><br>
+            <code>Real X = Origin X + (Column &times; Resolution) + (Resolution / 2)</code><br><br>
+            <code>Real Y = Origin Y - (Row &times; Resolution) - (Resolution / 2)</code>
+            <div class="note">* Note: In geospatial rasters, the Y coordinate usually decreases as the row index increases (moving top to bottom). The formulas above calculate the exact coordinate at the <strong>center</strong> of each pixel.</div>
+        </div>
+    </div>
+
+    <script>
+        const gridElement = document.getElementById('raster-grid');
+        const inputs = document.querySelectorAll('input[type="number"]');
+
+        // Initialize 3x3 grid cells
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${r}-${c}`;
+                
+                const rcLabel = document.createElement('div');
+                rcLabel.className = 'rc-label';
+                rcLabel.innerHTML = `[${r}, ${c}]`;
+                
+                const coordVal = document.createElement('div');
+                coordVal.className = 'coord-val';
+                coordVal.id = `coord-${r}-${c}`;
+
+                cell.appendChild(rcLabel);
+                cell.appendChild(coordVal);
+                gridElement.appendChild(cell);
+            }
+        }
+
+        function updateGrid() {
+            const ox = parseFloat(document.getElementById('originX').value) || 0;
+            const oy = parseFloat(document.getElementById('originY').value) || 0;
+            const res = parseFloat(document.getElementById('res').value) || 0;
+
+            // Update Outer Corners (Edges of the raster, not pixel centers)
+            document.getElementById('tl').textContent = `${ox}, ${oy}`;
+            document.getElementById('tr').textContent = `${ox + (3 * res)}, ${oy}`;
+            document.getElementById('bl').textContent = `${ox}, ${oy - (3 * res)}`;
+            document.getElementById('br').textContent = `${ox + (3 * res)}, ${oy - (3 * res)}`;
+
+            // Update Pixel Centers
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    // Center X: Origin + (columns passed * resolution) + half a pixel
+                    let cx = ox + (c * res) + (res / 2);
+                    // Center Y: Origin - (rows passed * resolution) - half a pixel
+                    let cy = oy - (r * res) - (res / 2);
+                    
+                    document.getElementById(`coord-${r}-${c}`).innerHTML = `X: ${cx}<br>Y: ${cy}`;
+                }
+            }
+        }
+
+        // Add event listeners to all inputs
+        inputs.forEach(input => {
+            input.addEventListener('input', updateGrid);
+        });
+
+        // Initial render
+        updateGrid();
+    </script>
+</body>
+</html>
